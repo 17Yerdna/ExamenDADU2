@@ -1,0 +1,78 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URI:http://localhost:8888}
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: servicio-instructor
+          uri: lb://servicio-instructor
+          predicates:
+            - Path=/api/instructores/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: instructorCircuitBreaker
+                fallbackUri: forward:/fallback/instructor
+        - id: servicio-alumno
+          uri: lb://servicio-alumno
+          predicates:
+            - Path=/api/alumnos/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: alumnoCircuitBreaker
+                fallbackUri: forward:/fallback/alumno
+        - id: servicio-taller
+          uri: lb://servicio-taller
+          predicates:
+            - Path=/api/talleres/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: tallerCircuitBreaker
+                fallbackUri: forward:/fallback/taller
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${DISCOVERY_SERVER_URI:http://localhost:8761}/eureka/
+  instance:
+    prefer-ip-address: true
+
+jwt:
+  secret: ${JWT_SECRET:clave-secreta-muy-segura-para-examen-dad2-2024}
+  expiration: ${JWT_EXPIRATION:900000}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      instructorCircuitBreaker:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+      alumnoCircuitBreaker:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+      tallerCircuitBreaker:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway

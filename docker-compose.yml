@@ -1,0 +1,216 @@
+services:
+  # ==========================================
+  # BASES DE DATOS
+  # ==========================================
+  
+  mysql-instructor:
+    image: mysql:8.0
+    container_name: mysql-instructor
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_DATABASE: ${MYSQL_INSTRUCTOR_DB}
+    ports:
+      - "${MYSQL_INSTRUCTOR_PORT}:3306"
+    volumes:
+      - mysql-instructor-data:/var/lib/mysql
+    networks:
+      - gestion-academica-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  mysql-alumno:
+    image: mysql:8.0
+    container_name: mysql-alumno
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_DATABASE: ${MYSQL_ALUMNO_DB}
+    ports:
+      - "${MYSQL_ALUMNO_PORT}:3306"
+    volumes:
+      - mysql-alumno-data:/var/lib/mysql
+    networks:
+      - gestion-academica-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  mysql-taller:
+    image: mysql:8.0
+    container_name: mysql-taller
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_DATABASE: ${MYSQL_TALLER_DB}
+    ports:
+      - "${MYSQL_TALLER_PORT}:3306"
+    volumes:
+      - mysql-taller-data:/var/lib/mysql
+    networks:
+      - gestion-academica-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # ==========================================
+  # MICROSERVICIOS DE INFRAESTRUCTURA
+  # ==========================================
+
+  config-server:
+    build:
+      context: ./config-server
+      dockerfile: Dockerfile
+    container_name: config-server
+    ports:
+      - "${CONFIG_SERVER_PORT}:${CONFIG_SERVER_PORT}"
+    environment:
+      - SPRING_PROFILES_ACTIVE=native
+    networks:
+      - gestion-academica-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${CONFIG_SERVER_PORT}/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  discovery-server:
+    build:
+      context: ./discovery-server
+      dockerfile: Dockerfile
+    container_name: discovery-server
+    ports:
+      - "${DISCOVERY_SERVER_PORT}:${DISCOVERY_SERVER_PORT}"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIG_SERVER_URI=http://config-server:${CONFIG_SERVER_PORT}
+    depends_on:
+      config-server:
+        condition: service_healthy
+    networks:
+      - gestion-academica-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${DISCOVERY_SERVER_PORT}/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ==========================================
+  # API GATEWAY
+  # ==========================================
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "${API_GATEWAY_PORT}:${API_GATEWAY_PORT}"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIG_SERVER_URI=http://config-server:${CONFIG_SERVER_PORT}
+      - DISCOVERY_SERVER_URI=http://discovery-server:${DISCOVERY_SERVER_PORT}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRATION=${JWT_EXPIRATION}
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    networks:
+      - gestion-academica-network
+
+  # ==========================================
+  # MICROSERVICIOS DE NEGOCIO
+  # ==========================================
+
+  servicio-instructor:
+    build:
+      context: ./servicio-instructor
+      dockerfile: Dockerfile
+    container_name: servicio-instructor
+    ports:
+      - "${SERVICIO_INSTRUCTOR_PORT}:${SERVICIO_INSTRUCTOR_PORT}"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIG_SERVER_URI=http://config-server:${CONFIG_SERVER_PORT}
+      - DISCOVERY_SERVER_URI=http://discovery-server:${DISCOVERY_SERVER_PORT}
+      - MYSQL_HOST=mysql-instructor
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=${MYSQL_INSTRUCTOR_DB}
+      - MYSQL_USERNAME=root
+      - MYSQL_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      mysql-instructor:
+        condition: service_healthy
+    networks:
+      - gestion-academica-network
+
+  servicio-alumno:
+    build:
+      context: ./servicio-alumno
+      dockerfile: Dockerfile
+    container_name: servicio-alumno
+    ports:
+      - "${SERVICIO_ALUMNO_PORT}:${SERVICIO_ALUMNO_PORT}"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIG_SERVER_URI=http://config-server:${CONFIG_SERVER_PORT}
+      - DISCOVERY_SERVER_URI=http://discovery-server:${DISCOVERY_SERVER_PORT}
+      - MYSQL_HOST=mysql-alumno
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=${MYSQL_ALUMNO_DB}
+      - MYSQL_USERNAME=root
+      - MYSQL_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      mysql-alumno:
+        condition: service_healthy
+    networks:
+      - gestion-academica-network
+
+  servicio-taller:
+    build:
+      context: ./servicio-taller
+      dockerfile: Dockerfile
+    container_name: servicio-taller
+    ports:
+      - "${SERVICIO_TALLER_PORT}:${SERVICIO_TALLER_PORT}"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - CONFIG_SERVER_URI=http://config-server:${CONFIG_SERVER_PORT}
+      - DISCOVERY_SERVER_URI=http://discovery-server:${DISCOVERY_SERVER_PORT}
+      - MYSQL_HOST=mysql-taller
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=${MYSQL_TALLER_DB}
+      - MYSQL_USERNAME=root
+      - MYSQL_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      mysql-taller:
+        condition: service_healthy
+    networks:
+      - gestion-academica-network
+
+networks:
+  gestion-academica-network:
+    driver: bridge
+
+volumes:
+  mysql-instructor-data:
+  mysql-alumno-data:
+  mysql-taller-data:
